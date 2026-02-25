@@ -1,0 +1,2051 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Retro Turret Folder Site + Asteroids (Pixel Pixel)</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg: #05060a;
+            --panel: #11131cdd;
+            --line: #7efcff;
+            --line2: #ff69d4;
+            --txt: #dffeff;
+            --muted: #95b8c4;
+            --yellow: #ffd166;
+            --yellow2: #c88b2b;
+            --px: 2px;
+            --shake-amp: 6px;
+            --pixel-cell: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            background: #000;
+            color: var(--txt);
+            overflow: hidden;
+            font-family: "Press Start 2P", monospace;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        body.combat-mode {
+            cursor: none;
+        }
+
+        .bg-video {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 0;
+            filter: contrast(1.08) saturate(0.75) brightness(0.56);
+            transform: translate(0,0);
+            will-change: transform;
+        }
+
+        .crt-overlay, .crt-scan, .crt-noise, .pixel-grid, .pixel-vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            transform: translate(0,0);
+            will-change: transform;
+        }
+
+        .crt-overlay {
+            z-index: 1;
+            background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 35%, rgba(0,0,0,.55) 100%), linear-gradient(to bottom, rgba(0,255,255,.03), rgba(255,0,170,.02));
+            mix-blend-mode: screen;
+        }
+
+        .crt-scan {
+            z-index: 2;
+            opacity: .11;
+            background: repeating-linear-gradient( to bottom, rgba(255,255,255,.45) 0 2px, transparent 2px 6px );
+        }
+
+        .crt-noise {
+            z-index: 3;
+            opacity: .02;
+            background: repeating-radial-gradient(circle at 20% 30%, #fff 0 1px, transparent 1px 3px), repeating-radial-gradient(circle at 70% 60%, #fff 0 1px, transparent 1px 4px);
+        }
+
+        .pixel-grid {
+            z-index: 4;
+            opacity: .14;
+            background: repeating-linear-gradient(to right, rgba(255,255,255,.08) 0 1px, transparent 1px var(--pixel-cell)), repeating-linear-gradient(to bottom, rgba(0,0,0,.35) 0 1px, transparent 1px var(--pixel-cell));
+            mix-blend-mode: overlay;
+        }
+
+        .pixel-vignette {
+            z-index: 4;
+            opacity: .35;
+            background: radial-gradient(circle at center, rgba(0,0,0,0) 38%, rgba(0,0,0,.35) 100%), repeating-linear-gradient( to right, rgba(126,252,255,.03) 0 calc(var(--pixel-cell) * 0.5), rgba(255,105,212,.03) calc(var(--pixel-cell) * 0.5) var(--pixel-cell) );
+        }
+
+        #scene {
+            position: fixed;
+            inset: 0;
+            z-index: 5;
+            overflow: hidden;
+            transform: translate(0,0);
+            will-change: transform;
+        }
+
+        body.world-shake .bg-video,
+        body.world-shake .crt-overlay,
+        body.world-shake .crt-scan,
+        body.world-shake .crt-noise,
+        body.world-shake .pixel-grid,
+        body.world-shake .pixel-vignette,
+        body.world-shake #scene {
+            animation: worldShake 180ms steps(2, end);
+        }
+
+        @keyframes worldShake {
+            0% {
+                transform: translate(0, 0);
+            }
+
+            20% {
+                transform: translate(calc(var(--shake-amp) * -1), calc(var(--shake-amp) * 0.40));
+            }
+
+            40% {
+                transform: translate(calc(var(--shake-amp) * 0.80), calc(var(--shake-amp) * -0.50));
+            }
+
+            60% {
+                transform: translate(calc(var(--shake-amp) * -0.60), calc(var(--shake-amp) * -0.20));
+            }
+
+            80% {
+                transform: translate(calc(var(--shake-amp) * 0.45), calc(var(--shake-amp) * 0.35));
+            }
+
+            100% {
+                transform: translate(0, 0);
+            }
+        }
+
+        #asteroidLayer {
+            position: absolute;
+            inset: 0;
+            z-index: 6;
+            pointer-events: none;
+        }
+
+        /* Pixel asteroid wrapper (sprite is drawn on a canvas) */
+        .asteroid {
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            transform: translate(-50%, -50%);
+            pointer-events: auto;
+            image-rendering: pixelated;
+            filter: drop-shadow(3px 3px 0 rgba(0,0,0,.35));
+        }
+
+            .asteroid .asteroid-sprite {
+                width: 100%;
+                height: 100%;
+                display: block;
+                image-rendering: pixelated;
+                image-rendering: crisp-edges;
+                background: transparent;
+            }
+
+            .asteroid.hitflash {
+                filter: brightness(1.45) contrast(1.2) drop-shadow(3px 3px 0 rgba(0,0,0,.35));
+            }
+
+        .asteroid-explosion {
+            position: fixed;
+            width: 26px;
+            height: 26px;
+            transform: translate(-50%, -50%) scale(0.4);
+            z-index: 19;
+            pointer-events: none;
+            border: 2px solid #fff;
+            background: rgba(255,255,255,.05);
+            box-shadow: 0 0 0 2px rgba(255,105,212,.55) inset;
+            animation: asteroidBoom 220ms steps(3, end) forwards;
+        }
+
+            .asteroid-explosion::before {
+                content: "";
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                width: 4px;
+                height: 4px;
+                background: #fff;
+                transform: translate(-50%, -50%);
+                box-shadow: -18px -6px 0 0 #ff69d4, 18px 6px 0 0 #7efcff, -10px 16px 0 0 #fff, 12px -16px 0 0 #ff69d4, -20px 14px 0 0 #7efcff, 22px -10px 0 0 #fff;
+                opacity: .95;
+            }
+
+        @keyframes asteroidBoom {
+            0% {
+                transform: translate(-50%, -50%) scale(0.4);
+                opacity: 1;
+            }
+
+            60% {
+                transform: translate(-50%, -50%) scale(1.1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(-50%, -50%) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        .folder {
+            position: absolute;
+            width: 160px;
+            height: 106px;
+            transform: translate(-50%,-50%);
+            background: linear-gradient(180deg, var(--yellow) 0%, var(--yellow2) 100%);
+            border: var(--px) solid #1d1d1d;
+            box-shadow: 0 0 0 2px rgba(0,0,0,.25) inset, 4px 4px 0 rgba(0,0,0,.45);
+            transition: transform .08s steps(2,end), filter .08s steps(2,end);
+            user-select: none;
+            z-index: 1;
+        }
+
+            .folder::before {
+                content: "";
+                position: absolute;
+                top: -14px;
+                left: 14px;
+                width: 54px;
+                height: 16px;
+                background: #ffe39a;
+                border: var(--px) solid #1d1d1d;
+                border-bottom: none;
+            }
+
+            .folder::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(to right, rgba(255,255,255,.08) 0 2px, transparent 2px calc(100% - 2px), rgba(0,0,0,.18) calc(100% - 2px)), linear-gradient(to bottom, rgba(255,255,255,.12) 0 2px, transparent 2px calc(100% - 2px), rgba(0,0,0,.2) calc(100% - 2px));
+                pointer-events: none;
+            }
+
+            .folder:hover {
+                transform: translate(-50%,-50%) scale(1.03);
+                filter: brightness(1.04);
+            }
+
+            .folder .tiny {
+                position: absolute;
+                left: 10px;
+                top: 16px;
+                font-size: 8px;
+                color: #33260f;
+                opacity: .85;
+                white-space: nowrap;
+                overflow: hidden;
+                max-width: calc(100% - 20px);
+            }
+
+            .folder .label {
+                position: absolute;
+                left: 10px;
+                right: 10px;
+                bottom: 10px;
+                background: rgba(255,255,255,.38);
+                color: #1d1d1d;
+                border: var(--px) solid rgba(0,0,0,.5);
+                font-size: 9px;
+                line-height: 1.2;
+                padding: 6px 6px 5px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .folder.hit {
+                animation: folderHit .14s steps(2,end);
+            }
+
+        @keyframes folderHit {
+            0% {
+                transform: translate(-50%,-50%)
+            }
+
+            25% {
+                transform: translate(calc(-50% - 2px), calc(-50% + 1px))
+            }
+
+            50% {
+                transform: translate(calc(-50% + 2px), calc(-50% - 1px))
+            }
+
+            75% {
+                transform: translate(calc(-50% - 1px), calc(-50% - 1px))
+            }
+
+            100% {
+                transform: translate(-50%,-50%)
+            }
+        }
+
+        /* Pixel turret (base + barrel are canvases) */
+        #turret {
+            position: fixed;
+            left: 50%;
+            bottom: 14px;
+            width: 112px;
+            height: 112px;
+            transform: translateX(-50%);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+            #turret .twitch {
+                position: absolute;
+                inset: 0;
+                animation: turretTwitch .65s steps(2,end) infinite;
+            }
+
+        @keyframes turretTwitch {
+            0%, 92%, 100% {
+                transform: translate(0,0);
+            }
+
+            95% {
+                transform: translate(1px,0);
+            }
+
+            98% {
+                transform: translate(-1px,1px);
+            }
+        }
+
+        #turretBaseCanvas {
+            position: absolute;
+            left: 50%;
+            bottom: 0;
+            width: 112px;
+            height: 112px;
+            transform: translateX(-50%);
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        #barrelWrap {
+            position: absolute;
+            left: 56px; /* turret pivot x inside the 112x112 turret */
+            top: 74px; /* turret pivot y inside the 112x112 turret */
+            width: 0;
+            height: 0;
+            transform-origin: 0 0;
+        }
+
+        #turretBarrelCanvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 72px;
+            height: 24px;
+            transform: translateY(-12px);
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        #crosshair {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            transform: translate(-50%,-50%);
+            z-index: 25;
+            pointer-events: none;
+            animation: crosshairTwitch .55s steps(2,end) infinite;
+        }
+
+        @keyframes crosshairTwitch {
+            0%, 95%, 100% {
+                transform: translate(-50%,-50%);
+            }
+
+            97% {
+                transform: translate(calc(-50% + 1px), calc(-50% - 1px));
+            }
+
+            99% {
+                transform: translate(calc(-50% - 1px), calc(-50% + 1px));
+            }
+        }
+
+        #crosshair .h, #crosshair .v, #crosshair .dot, #crosshair .ring {
+            position: absolute;
+        }
+
+        #crosshair .h {
+            left: 0;
+            top: 14px;
+            width: 30px;
+            height: 2px;
+            background: var(--line);
+            box-shadow: 0 0 6px rgba(126,252,255,.35);
+        }
+
+        #crosshair .v {
+            left: 14px;
+            top: 0;
+            width: 2px;
+            height: 30px;
+            background: var(--line);
+            box-shadow: 0 0 6px rgba(126,252,255,.35);
+        }
+
+        #crosshair .dot {
+            left: 11px;
+            top: 11px;
+            width: 8px;
+            height: 8px;
+            background: #fff;
+            border: 2px solid #111;
+        }
+
+        #crosshair .ring {
+            left: 4px;
+            top: 4px;
+            width: 22px;
+            height: 22px;
+            border: 2px solid rgba(255,105,212,.8);
+        }
+
+        .score-panel {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 30;
+            min-width: 250px;
+            background: rgba(8,10,16,.78);
+            border: 2px solid #223;
+            box-shadow: 4px 4px 0 rgba(0,0,0,.5);
+            padding: 10px 12px;
+        }
+
+            .score-panel .title {
+                font-size: 8px;
+                color: var(--muted);
+                margin-bottom: 8px;
+            }
+
+            .score-panel .score {
+                font-size: 14px;
+                color: #fff;
+                line-height: 1.2;
+                margin-bottom: 6px;
+            }
+
+            .score-panel .sub {
+                font-size: 8px;
+                color: var(--muted);
+            }
+
+        .volume-panel {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 30;
+            width: min(340px, 42vw);
+            background: rgba(8,10,16,.78);
+            border: 2px solid #223;
+            box-shadow: 4px 4px 0 rgba(0,0,0,.5);
+            padding: 10px 12px;
+        }
+
+            .volume-panel .row {
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+
+                .volume-panel .row:last-child {
+                    margin-bottom: 0;
+                }
+
+            .volume-panel label {
+                font-size: 8px;
+                color: var(--txt);
+                white-space: nowrap;
+            }
+
+            .volume-panel .val {
+                font-size: 8px;
+                color: var(--muted);
+                min-width: 34px;
+                text-align: right;
+            }
+
+            .volume-panel input[type="range"] {
+                width: 100%;
+                appearance: none;
+                height: 12px;
+                background: #101625;
+                border: 2px solid #2a334a;
+                outline: none;
+                cursor: pointer;
+            }
+
+                .volume-panel input[type="range"]::-webkit-slider-thumb {
+                    appearance: none;
+                    width: 12px;
+                    height: 16px;
+                    background: #dffeff;
+                    border: 2px solid #0a0d14;
+                    margin-top: -4px;
+                }
+
+                .volume-panel input[type="range"]::-webkit-slider-runnable-track {
+                    height: 4px;
+                    background: linear-gradient(90deg, #7efcff 0%, #ff69d4 100%);
+                }
+
+                .volume-panel input[type="range"]::-moz-range-thumb {
+                    width: 12px;
+                    height: 16px;
+                    border-radius: 0;
+                    background: #dffeff;
+                    border: 2px solid #0a0d14;
+                }
+
+                .volume-panel input[type="range"]::-moz-range-track {
+                    height: 4px;
+                    background: linear-gradient(90deg, #7efcff 0%, #ff69d4 100%);
+                }
+
+        .hud {
+            position: fixed;
+            left: 12px;
+            bottom: 12px;
+            z-index: 30;
+            max-width: min(680px, 90vw);
+            background: rgba(8,10,16,.75);
+            border: 2px solid #223;
+            box-shadow: 4px 4px 0 rgba(0,0,0,.5);
+            padding: 10px 12px;
+            font-size: 8px;
+            line-height: 1.65;
+            color: var(--muted);
+        }
+
+            .hud b {
+                color: var(--txt);
+            }
+
+        .laser-beam {
+            position: fixed;
+            height: 6px;
+            transform-origin: 0 50%;
+            z-index: 18;
+            pointer-events: none;
+            background: linear-gradient(90deg, #fff 0 25%, var(--line2) 25% 50%, #fff 50% 75%, var(--line2) 75% 100%);
+            box-shadow: 0 0 0 2px rgba(255,105,212,.18);
+            animation: beamFade .14s steps(2,end) forwards;
+        }
+
+        @keyframes beamFade {
+            to {
+                opacity: 0;
+            }
+        }
+
+        .laser-bolt {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            z-index: 19;
+            pointer-events: none;
+            background: #fff;
+            border: 2px solid #111;
+            box-shadow: 0 0 0 2px rgba(255,105,212,.18);
+            transform: translate(-50%,-50%);
+        }
+
+        .impact {
+            position: fixed;
+            width: 26px;
+            height: 26px;
+            transform: translate(-50%,-50%) scale(.3);
+            z-index: 19;
+            pointer-events: none;
+            border: 2px solid #fff;
+            box-shadow: 0 0 0 2px rgba(255,105,212,.55) inset;
+            background: rgba(255,255,255,.03);
+            animation: impactPop .18s steps(2,end) forwards;
+        }
+
+        @keyframes impactPop {
+            0% {
+                transform: translate(-50%,-50%) scale(.3);
+                opacity: 1;
+            }
+
+            70% {
+                transform: translate(-50%,-50%) scale(1.05);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(-50%,-50%) scale(1.25);
+                opacity: 0;
+            }
+        }
+
+        #folderOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 2.5vh 2vw;
+            background: rgba(0,0,0,.35);
+        }
+
+            #folderOverlay.open {
+                display: flex;
+            }
+
+        .folder-window {
+            width: min(1120px, 96vw);
+            height: min(88vh, 900px);
+            background: var(--panel);
+            border: 2px solid #1b2131;
+            box-shadow: 0 0 0 2px rgba(126,252,255,.15), 6px 6px 0 rgba(0,0,0,.55);
+            display: grid;
+            grid-template-rows: auto 1fr;
+            overflow: hidden;
+            animation: panelOpen .14s steps(2,end);
+        }
+
+        @keyframes panelOpen {
+            0% {
+                transform: scale(.97);
+                opacity: 0;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .folder-window-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,.03);
+            border-bottom: 2px solid rgba(126,252,255,.12);
+        }
+
+        .folder-window-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+            .folder-window-title .pill {
+                font-size: 8px;
+                color: #111;
+                background: var(--yellow);
+                border: 2px solid #111;
+                padding: 6px 7px 4px;
+            }
+
+            .folder-window-title h2 {
+                margin: 0;
+                font-size: 10px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                color: var(--txt);
+            }
+
+        .folder-window-controls {
+            display: flex;
+            gap: 6px;
+        }
+
+            .folder-window-controls button {
+                font-family: "Press Start 2P", monospace;
+                font-size: 8px;
+                color: var(--txt);
+                background: #1a2030;
+                border: 2px solid #0d1018;
+                box-shadow: 2px 2px 0 rgba(0,0,0,.4);
+                padding: 8px 8px 6px;
+                cursor: pointer;
+            }
+
+                .folder-window-controls button:hover {
+                    filter: brightness(1.08);
+                    transform: translate(-1px,-1px);
+                }
+
+            .folder-window-controls .close {
+                background: #3a1620;
+                border-color: #1a0a0f;
+            }
+
+        .folder-window-body {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            min-height: 0;
+        }
+
+        .folder-nav {
+            background: rgba(255,255,255,.02);
+            border-right: 2px solid rgba(126,252,255,.12);
+            padding: 10px;
+            overflow-y: auto;
+        }
+
+            .folder-nav h3 {
+                margin: 6px 0 10px;
+                font-size: 8px;
+                color: var(--muted);
+            }
+
+        .nav-item {
+            width: 100%;
+            text-align: left;
+            margin: 0 0 8px;
+            padding: 8px 8px 6px;
+            border: 2px solid #0d1118;
+            background: #171c29;
+            color: var(--txt);
+            font: inherit;
+            font-size: 8px;
+            line-height: 1.4;
+            cursor: pointer;
+            box-shadow: 2px 2px 0 rgba(0,0,0,.35);
+        }
+
+            .nav-item:hover,
+            .nav-item.active {
+                background: #20273a;
+                box-shadow: 0 0 0 2px rgba(126,252,255,.12) inset, 2px 2px 0 rgba(0,0,0,.35);
+            }
+
+        .folder-content {
+            min-height: 0;
+            overflow-y: auto;
+            padding: 14px;
+            font-size: 9px;
+            line-height: 1.7;
+            scroll-behavior: smooth;
+        }
+
+        .card {
+            background: rgba(255,255,255,.02);
+            border: 2px solid rgba(126,252,255,.10);
+            box-shadow: 3px 3px 0 rgba(0,0,0,.35);
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+            .card h1, .card h2, .card h3 {
+                margin: 0 0 10px;
+                font-size: 10px;
+                color: var(--txt);
+                line-height: 1.5;
+            }
+
+            .card p {
+                margin: 0 0 10px;
+                color: #cfeef7;
+                line-height: 1.8;
+            }
+
+        .tag {
+            display: inline-block;
+            margin: 0 6px 6px 0;
+            padding: 6px 8px 4px;
+            border: 2px solid rgba(126,252,255,.18);
+            background: rgba(126,252,255,.06);
+            font-size: 8px;
+            color: var(--txt);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 8px;
+        }
+
+        .mini {
+            border: 2px solid rgba(126,252,255,.1);
+            background: rgba(255,255,255,.02);
+            padding: 10px;
+        }
+
+            .mini b {
+                display: block;
+                margin-bottom: 6px;
+            }
+
+        .folder-content a {
+            color: #9ee8ff;
+        }
+
+        .folder-content code {
+            font-family: inherit;
+            font-size: 8px;
+            background: rgba(255,255,255,.06);
+            border: 2px solid rgba(255,255,255,.06);
+            padding: 4px 6px 2px;
+        }
+
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #7efcff33 #00000033;
+        }
+
+            *::-webkit-scrollbar {
+                width: 12px;
+                height: 12px;
+            }
+
+            *::-webkit-scrollbar-track {
+                background: #0a0d14;
+            }
+
+            *::-webkit-scrollbar-thumb {
+                background: #1f2f41;
+                border: 2px solid #0a0d14;
+            }
+
+        @media (max-width: 880px) {
+            .folder-window-body {
+                grid-template-columns: 1fr;
+            }
+
+            .folder-nav {
+                border-right: none;
+                border-bottom: 2px solid rgba(126,252,255,.12);
+                max-height: 170px;
+            }
+
+            .folder {
+                width: 138px;
+                height: 98px;
+            }
+
+            #turret {
+                width: 96px;
+                height: 96px;
+                bottom: 12px;
+            }
+
+            #turretBaseCanvas {
+                width: 96px;
+                height: 96px;
+            }
+
+            #barrelWrap {
+                left: 48px;
+                top: 64px;
+            }
+
+            #turretBarrelCanvas {
+                width: 60px;
+                height: 20px;
+                transform: translateY(-10px);
+            }
+
+            .volume-panel {
+                top: auto;
+                bottom: 120px;
+                right: 12px;
+                width: min(340px, 88vw);
+            }
+
+            .score-panel {
+                width: min(260px, 80vw);
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body class="combat-mode">
+
+    <video class="bg-video" autoplay muted loop playsinline>
+        <source src="assets/background.mp4" type="video/mp4">
+    </video>
+
+    <div class="crt-overlay"></div>
+    <div class="crt-scan"></div>
+    <div class="crt-noise"></div>
+    <div class="pixel-grid"></div>
+    <div class="pixel-vignette"></div>
+
+    <div id="scene">
+        <div id="asteroidLayer" aria-hidden="true"></div>
+
+        <div class="folder" data-folder-id="projects" style="left:18%; top:18%;">
+            <div class="tiny">/site</div>
+            <div class="label">PROJECTS</div>
+        </div>
+
+        <div class="folder" data-folder-id="about" style="left:72%; top:18%;">
+            <div class="tiny">/root</div>
+            <div class="label">ABOUT</div>
+        </div>
+
+        <div class="folder" data-folder-id="gallery" style="left:82%; top:48%;">
+            <div class="tiny">/media</div>
+            <div class="label">GALLERY</div>
+        </div>
+
+        <div class="folder" data-folder-id="contact" style="left:20%; top:56%;">
+            <div class="tiny">/usr</div>
+            <div class="label">CONTACT</div>
+        </div>
+
+        <div class="folder" data-folder-id="lab" style="left:50%; top:28%;">
+            <div class="tiny">/exp</div>
+            <div class="label">LAB NOTES</div>
+        </div>
+    </div>
+
+    <!-- Pixel turret -->
+    <div id="turret" aria-hidden="true">
+        <div class="twitch">
+            <canvas id="turretBaseCanvas" width="56" height="56"></canvas>
+            <div id="barrelWrap">
+                <canvas id="turretBarrelCanvas" width="36" height="12"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="crosshair" aria-hidden="true">
+        <div class="h"></div>
+        <div class="v"></div>
+        <div class="ring"></div>
+        <div class="dot"></div>
+    </div>
+
+    <div class="score-panel">
+        <div class="title">ASTEROID SCORE</div>
+        <div class="score" id="scoreValue">0000</div>
+        <div class="sub">DESTROYED: <span id="destroyedCount">0</span></div>
+    </div>
+
+    <div class="volume-panel">
+        <div class="row">
+            <label for="musicVolume">MUSIC</label>
+            <input id="musicVolume" type="range" min="0" max="100" step="1" value="25">
+            <div class="val" id="musicVolVal">25%</div>
+        </div>
+        <div class="row">
+            <label for="sfxVolume">SFX</label>
+            <input id="sfxVolume" type="range" min="0" max="100" step="1" value="65">
+            <div class="val" id="sfxVolVal">65%</div>
+        </div>
+    </div>
+
+    <div class="hud">
+        <div><b>RETRO TURRET MODE</b> • AIM = MOUSE • FIRE = CLICK / SPACE</div>
+        <div>HIT ASTEROIDS FOR SCORE • SHOOT FOLDERS TO OPEN • MISS = RICOCHET • <b>ESC</b> CLOSES WINDOW</div>
+    </div>
+
+    <div id="folderOverlay" aria-hidden="true">
+        <div class="folder-window" role="dialog" aria-modal="true" aria-labelledby="folderTitle">
+            <div class="folder-window-header">
+                <div class="folder-window-title">
+                    <span class="pill">FOLDER</span>
+                    <h2 id="folderTitle">UNTITLED</h2>
+                </div>
+                <div class="folder-window-controls">
+                    <button id="backToCombatBtn">BACK</button>
+                    <button id="closeFolderBtn" class="close">CLOSE</button>
+                </div>
+            </div>
+
+            <div class="folder-window-body">
+                <aside class="folder-nav" id="folderNav"></aside>
+                <main class="folder-content" id="folderContent"></main>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio -->
+    <audio id="audioBg" preload="auto" loop>
+        <source src="assets/audio/bg-loop.wav" type="audio/wav">
+    </audio>
+    <audio id="audioShoot" preload="auto">
+        <source src="assets/audio/shoot.wav" type="audio/wav">
+    </audio>
+    <audio id="audioHit" preload="auto">
+        <source src="assets/audio/hit.wav" type="audio/wav">
+    </audio>
+    <audio id="audioRicochet" preload="auto">
+        <source src="assets/audio/ricochet.wav" type="audio/wav">
+    </audio>
+    <audio id="audioOpen" preload="auto">
+        <source src="assets/audio/open-folder.wav" type="audio/wav">
+    </audio>
+
+    <!-- Folder templates -->
+    <template id="tmpl-projects">
+        <section id="projects-overview" class="card">
+            <h1>PROJECTS</h1>
+            <p>Add your games, 3D art, devlogs and links here.</p>
+            <span class="tag">GAME DEV</span>
+            <span class="tag">UNITY</span>
+            <span class="tag">VFX</span>
+        </section>
+        <section id="projects-list" class="card">
+            <h2>FEATURED</h2>
+            <div class="grid">
+                <div class="mini"><b>THALASSAPHOBIA</b><p>Multiplayer saturation diving horror.</p></div>
+                <div class="mini"><b>RETRO SITE</b><p>Turret UI portfolio concept.</p></div>
+                <div class="mini"><b>TOAD</b><p>Surfwear and branding concepts.</p></div>
+            </div>
+        </section>
+    </template>
+
+    <template id="tmpl-about">
+        <section id="about-main" class="card">
+            <h1>ABOUT</h1>
+            <p>Write your short intro here in your style.</p>
+            <p>Keep it personal and weird and cool.</p>
+        </section>
+        <section id="about-stack" class="card">
+            <h2>STACK</h2>
+            <p>UNITY • BLENDER • HDRP • SHADER GRAPH • UI • MOTION</p>
+        </section>
+    </template>
+
+    <template id="tmpl-gallery">
+        <section id="gallery-grid" class="card">
+            <h1>GALLERY</h1>
+            <p>Screenshots, renders, clips and concept art.</p>
+            <div class="grid">
+                <div class="mini">SCREEN 01</div>
+                <div class="mini">SCREEN 02</div>
+                <div class="mini">CONCEPT</div>
+                <div class="mini">UI SHOT</div>
+            </div>
+        </section>
+    </template>
+
+    <template id="tmpl-contact">
+        <section id="contact-main" class="card">
+            <h1>CONTACT</h1>
+            <p>EMAIL: you@example.com</p>
+            <p>INSTAGRAM: @yourhandle</p>
+            <p>GITHUB: github.com/you</p>
+        </section>
+    </template>
+
+    <template id="tmpl-lab">
+        <section id="lab-intro" class="card">
+            <h1>LAB NOTES</h1>
+            <p>Experiments, prototypes and shader tests 🔬</p>
+        </section>
+        <section id="lab-entry1" class="card">
+            <h2>ENTRY 01</h2>
+            <p>Asteroids + turret are now pixel-art canvases.</p>
+        </section>
+        <section id="lab-entry2" class="card">
+            <h2>ENTRY 02</h2>
+            <p>Music ducks when folder windows are open.</p>
+        </section>
+    </template>
+
+    <script>
+        (() => {
+            const body = document.body;
+            const folders = [...document.querySelectorAll('.folder')];
+            const asteroidLayer = document.getElementById('asteroidLayer');
+
+            const crosshair = document.getElementById('crosshair');
+            const turret = document.getElementById('turret');
+            const barrelWrap = document.getElementById('barrelWrap');
+            const turretBaseCanvas = document.getElementById('turretBaseCanvas');
+            const turretBarrelCanvas = document.getElementById('turretBarrelCanvas');
+
+            const overlay = document.getElementById('folderOverlay');
+            const folderTitle = document.getElementById('folderTitle');
+            const folderNav = document.getElementById('folderNav');
+            const folderContent = document.getElementById('folderContent');
+            const closeFolderBtn = document.getElementById('closeFolderBtn');
+            const backToCombatBtn = document.getElementById('backToCombatBtn');
+
+            const scoreValueEl = document.getElementById('scoreValue');
+            const destroyedCountEl = document.getElementById('destroyedCount');
+
+            const musicSlider = document.getElementById('musicVolume');
+            const sfxSlider = document.getElementById('sfxVolume');
+            const musicVolVal = document.getElementById('musicVolVal');
+            const sfxVolVal = document.getElementById('sfxVolVal');
+
+            const CONFIG = {
+                performanceMode: true,
+                folderFloat: true,
+                folderFloatAmountPx: 2,
+                shootCooldownMs: 90,
+
+                directShotSpeedPxPerSec: 1600,
+                ricochetSpeedPxPerSec: 1400,
+                ricochetMaxBounces: 4,
+                ricochetLifetimeMs: 1400,
+
+                asteroids: {
+                    enabled: true,
+                    count: 8,
+                    minSize: 38,
+                    maxSize: 74,
+                    minSpeed: 28,
+                    maxSpeed: 70,
+                    respawnDelayMs: 700,
+                    margin: 24
+                },
+
+                audio: {
+                    enabled: true,
+                    musicBaseVolume: 0.25,
+                    folderOpenDuck: 0.28,
+                    duckLerpSpeed: 7.0,
+                    sfxBase: {
+                        shoot: 0.65,
+                        hit: 0.70,
+                        ricochet: 0.65,
+                        open: 0.75
+                    }
+                },
+
+                pixel: {
+                    snap: 3,
+                    angleSnap: 4
+                }
+            };
+
+            if (CONFIG.performanceMode) {
+                const noise = document.querySelector('.crt-noise');
+                if (noise) noise.style.display = 'none';
+            }
+
+            const folderConfigs = {
+                projects: { title: 'PROJECTS', template: 'tmpl-projects' },
+                about: { title: 'ABOUT', template: 'tmpl-about' },
+                gallery: { title: 'GALLERY', template: 'tmpl-gallery' },
+                contact: { title: 'CONTACT', template: 'tmpl-contact' },
+                lab: { title: 'LAB NOTES', template: 'tmpl-lab' }
+            };
+
+            const state = {
+                mouseX: window.innerWidth * 0.5,
+                mouseY: window.innerHeight * 0.35,
+                panelOpen: false,
+                cooldown: false,
+                barrelAngleDeg: -90,
+                audioUnlocked: false,
+
+                musicVol: 0.25,
+                sfxVol: 0.65,
+                musicDuckCurrent: 1,
+                musicDuckTarget: 1,
+
+                score: 0,
+                asteroidsDestroyed: 0
+            };
+
+            const PIXEL_SNAP = CONFIG.pixel.snap;
+            const ANGLE_SNAP = CONFIG.pixel.angleSnap;
+
+            const folderBasePositions = folders.map((folder, i) => ({
+                el: folder,
+                i,
+                baseLeft: parseFloat(folder.style.left),
+                baseTop: parseFloat(folder.style.top),
+                speed: 0.00035 + i * 0.00005
+            }));
+
+            const audioEls = {
+                bg: document.getElementById('audioBg'),
+                shoot: document.getElementById('audioShoot'),
+                hit: document.getElementById('audioHit'),
+                ricochet: document.getElementById('audioRicochet'),
+                open: document.getElementById('audioOpen')
+            };
+
+            const asteroids = [];
+            const asteroidMap = new Map();
+            let asteroidIdCounter = 1;
+            let shakeTimeout = null;
+
+            function snap(v, step = PIXEL_SNAP) {
+                return Math.round(v / step) * step;
+            }
+
+            function rand(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            function hashSeed(n) {
+                let x = (n | 0) ^ 0x9e3779b9;
+                x ^= x << 13;
+                x ^= x >>> 17;
+                x ^= x << 5;
+                return (x >>> 0);
+            }
+
+            function seeded(seed) {
+                let s = hashSeed(seed);
+                return () => {
+                    s = (s * 1664525 + 1013904223) >>> 0;
+                    return s / 4294967296;
+                };
+            }
+
+            function fmtScore(n) {
+                return String(n).padStart(4, '0');
+            }
+
+            function updateScoreUI() {
+                scoreValueEl.textContent = fmtScore(state.score);
+                destroyedCountEl.textContent = String(state.asteroidsDestroyed);
+            }
+
+            function updateVolumeUI() {
+                musicVolVal.textContent = `${Math.round(state.musicVol * 100)}%`;
+                sfxVolVal.textContent = `${Math.round(state.sfxVol * 100)}%`;
+            }
+
+            function setMusicDuck(target) {
+                state.musicDuckTarget = Math.max(0, Math.min(1, target));
+            }
+
+            function applyMusicVolume() {
+                if (!audioEls.bg) return;
+                const finalVol = CONFIG.audio.musicBaseVolume * state.musicVol * state.musicDuckCurrent;
+                audioEls.bg.volume = Math.max(0, Math.min(1, finalVol));
+            }
+
+            function safePlayAudio(el, baseVol = 1, kind = 'sfx', clone = false) {
+                if (!CONFIG.audio.enabled || !el) return;
+
+                const vol = kind === 'music'
+                    ? baseVol * state.musicVol
+                    : baseVol * state.sfxVol;
+
+                const finalVol = Math.max(0, Math.min(1, vol));
+
+                try {
+                    if (clone) {
+                        const c = el.cloneNode(true); // clone <source> too
+                        c.removeAttribute('id');
+                        c.preload = 'auto';
+                        c.volume = finalVol;
+                        c.style.display = 'none';
+                        document.body.appendChild(c);
+
+                        const cleanup = () => {
+                            try { c.pause(); } catch { }
+                            c.remove();
+                        };
+
+                        c.addEventListener('ended', cleanup, { once: true });
+                        c.addEventListener('error', cleanup, { once: true });
+                        c.play().catch(() => cleanup());
+                        return;
+                    }
+
+                    el.volume = finalVol;
+                    el.currentTime = 0;
+                    el.play().catch(() => { });
+                } catch (err) {
+                    console.warn('Audio play error:', err);
+                }
+            }
+
+            function unlockAudioAndMaybeStartBg() {
+                if (state.audioUnlocked) return;
+                state.audioUnlocked = true;
+                applyMusicVolume();
+                audioEls.bg?.play().catch(() => { });
+            }
+
+            const playShoot = () => safePlayAudio(audioEls.shoot, CONFIG.audio.sfxBase.shoot, 'sfx', true);
+            const playHit = () => safePlayAudio(audioEls.hit, CONFIG.audio.sfxBase.hit, 'sfx', true);
+            const playRicochet = () => safePlayAudio(audioEls.ricochet, CONFIG.audio.sfxBase.ricochet, 'sfx', true);
+            const playOpenFolder = () => safePlayAudio(audioEls.open, CONFIG.audio.sfxBase.open, 'sfx', true);
+
+            function triggerWorldShake(intensityPx = 6, durationMs = 180) {
+                body.style.setProperty('--shake-amp', `${Math.max(2, intensityPx)}px`);
+                body.classList.remove('world-shake');
+                void body.offsetWidth;
+                body.classList.add('world-shake');
+
+                clearTimeout(shakeTimeout);
+                shakeTimeout = setTimeout(() => body.classList.remove('world-shake'), durationMs + 20);
+            }
+
+            /* ---------- Pixel sprite drawing ---------- */
+
+            function px(ctx, x, y, color) {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, 1, 1);
+            }
+
+            function drawTurretSprites() {
+                // Base
+                const b = turretBaseCanvas.getContext('2d');
+                b.clearRect(0, 0, turretBaseCanvas.width, turretBaseCanvas.height);
+
+                // 56x56 pixel-art turret base (scaled in CSS)
+                // palette
+                const c0 = '#0a0d14';
+                const c1 = '#2b3448';
+                const c2 = '#425173';
+                const c3 = '#5f739f';
+                const c4 = '#dffeff';
+                const c5 = '#a6b7d4';
+
+                // Helper rect
+                const r = (x, y, w, h, c) => { b.fillStyle = c; b.fillRect(x, y, w, h); };
+
+                // Body base
+                r(14, 38, 28, 10, c1);
+                r(12, 40, 32, 8, c2);
+                r(10, 44, 36, 6, c0);
+
+                // Neck / center
+                r(24, 24, 8, 14, c2);
+                r(23, 23, 10, 2, c5);
+                r(24, 37, 8, 2, c0);
+
+                // Side shoulders
+                r(18, 30, 6, 8, c1);
+                r(32, 30, 6, 8, c1);
+
+                // Highlight pixels
+                r(14, 38, 26, 1, c5);
+                r(12, 40, 1, 6, c5);
+                r(42, 40, 1, 6, c0);
+
+                // Tiny cyan indicator lights
+                r(18, 42, 2, 2, '#7efcff');
+                r(36, 42, 2, 2, '#7efcff');
+
+                // Outline blocks
+                b.strokeStyle = c0;
+                b.lineWidth = 1;
+                b.strokeRect(12.5, 40.5, 31, 7);
+                b.strokeRect(24.5, 24.5, 7, 13);
+
+                // Dither pixels
+                px(b, 17, 45, c3); px(b, 20, 45, c3); px(b, 23, 45, c3);
+                px(b, 29, 45, c3); px(b, 33, 45, c3); px(b, 37, 45, c3);
+            }
+
+            function drawTurretBarrelSprite() {
+                const c = turretBarrelCanvas.getContext('2d');
+                c.clearRect(0, 0, turretBarrelCanvas.width, turretBarrelCanvas.height);
+
+                const o = '#0a0d14';
+                const d = '#4a5d84';
+                const m = '#6d82b0';
+                const h = '#aabbd8';
+                const glow = '#eaffff';
+
+                // Barrel core (36x12 canvas)
+                c.fillStyle = d; c.fillRect(2, 4, 26, 4);
+                c.fillStyle = m; c.fillRect(4, 3, 22, 1); // top highlight strip
+                c.fillStyle = h; c.fillRect(3, 4, 1, 3);
+                c.fillStyle = o; c.fillRect(27, 4, 1, 4);
+
+                // upper rail
+                c.fillStyle = d; c.fillRect(8, 1, 10, 2);
+                c.fillStyle = h; c.fillRect(8, 1, 8, 1);
+
+                // muzzle block
+                c.fillStyle = glow; c.fillRect(28, 3, 4, 6);
+                c.fillStyle = o; c.strokeRect(27.5, 2.5, 5, 7);
+
+                // back cap
+                c.fillStyle = o; c.fillRect(1, 4, 1, 4);
+
+                // pixel vents
+                c.fillStyle = o;
+                c.fillRect(11, 5, 1, 1);
+                c.fillRect(15, 5, 1, 1);
+                c.fillRect(19, 5, 1, 1);
+
+                // fake glow pixels around muzzle
+                c.fillStyle = 'rgba(126,252,255,0.35)';
+                c.fillRect(32, 4, 1, 4);
+                c.fillRect(29, 2, 2, 1);
+                c.fillRect(29, 9, 2, 1);
+            }
+
+            function drawAsteroidSprite(canvas, seedValue) {
+                const ctx = canvas.getContext('2d', { alpha: true });
+                const W = canvas.width, H = canvas.height;
+                ctx.clearRect(0, 0, W, H);
+
+                const rnd = seeded(seedValue);
+                const dark = '#3e4654';
+                const mid = '#6a7485';
+                const light = '#98a3b7';
+                const line = '#202531';
+
+                // Create a rough blob mask around center
+                const cx = 8 + (rnd() * 2 - 1) * 0.4;
+                const cy = 8 + (rnd() * 2 - 1) * 0.4;
+                const baseR = 6.3 + rnd() * 1.4;
+
+                for (let y = 0; y < 16; y++) {
+                    for (let x = 0; x < 16; x++) {
+                        const dx = x + 0.5 - cx;
+                        const dy = y + 0.5 - cy;
+                        const ang = Math.atan2(dy, dx);
+                        const dist = Math.hypot(dx, dy);
+
+                        // jagged radial variation
+                        const jag =
+                            Math.sin(ang * 3 + rnd() * 0.3) * 0.35 +
+                            Math.sin(ang * 5 + 1.2) * 0.28 +
+                            Math.cos(ang * 2 - 0.7) * 0.22;
+
+                        const radiusHere = baseR + jag + (rnd() - 0.5) * 0.25;
+                        if (dist <= radiusHere) {
+                            // shade by directional light and noise
+                            const shadeN = (x * 0.33 + y * 0.17 + rnd() * 0.5);
+                            const lightness = (-dx * 0.55 - dy * 0.35) + shadeN * 0.55;
+
+                            let col = mid;
+                            if (lightness > 1.2) col = light;
+                            if (lightness < 0.65) col = dark;
+                            px(ctx, x, y, col);
+                        }
+                    }
+                }
+
+                // Outline pass
+                const img = ctx.getImageData(0, 0, 16, 16);
+                const data = img.data;
+                const isFilled = (x, y) => {
+                    if (x < 0 || y < 0 || x >= 16 || y >= 16) return false;
+                    return data[(y * 16 + x) * 4 + 3] > 0;
+                };
+                for (let y = 0; y < 16; y++) {
+                    for (let x = 0; x < 16; x++) {
+                        if (!isFilled(x, y)) continue;
+                        if (!isFilled(x - 1, y) || !isFilled(x + 1, y) || !isFilled(x, y - 1) || !isFilled(x, y + 1)) {
+                            px(ctx, x, y, line);
+                        }
+                    }
+                }
+
+                // Craters
+                const craterCount = 2 + Math.floor(rnd() * 3);
+                for (let i = 0; i < craterCount; i++) {
+                    const cx2 = 3 + Math.floor(rnd() * 10);
+                    const cy2 = 3 + Math.floor(rnd() * 10);
+                    const r = 1 + Math.floor(rnd() * 2);
+
+                    for (let y = -r; y <= r; y++) {
+                        for (let x = -r; x <= r; x++) {
+                            const pxX = cx2 + x;
+                            const pxY = cy2 + y;
+                            if (pxX < 0 || pxY < 0 || pxX >= 16 || pxY >= 16) continue;
+                            const dist = Math.hypot(x, y);
+                            const idx = (pxY * 16 + pxX) * 4;
+                            if (dist <= r && data[idx + 3] > 0) {
+                                if (dist < r - 0.35) {
+                                    ctx.fillStyle = '#4b5462';
+                                } else {
+                                    ctx.fillStyle = '#7d879b';
+                                }
+                                ctx.fillRect(pxX, pxY, 1, 1);
+                            }
+                        }
+                    }
+                    // crater shadow
+                    if (cx2 + r < 16 && cy2 + r < 16) px(ctx, cx2 + r, cy2 + r, '#2b303c');
+                }
+            }
+
+            drawTurretSprites();
+            drawTurretBarrelSprite();
+
+            /* ---------- Aiming / shooting ---------- */
+
+            function getTurretPivot() {
+                const r = turret.getBoundingClientRect();
+                // Matches the CSS barrelWrap pivot placement
+                return { x: r.left + r.width / 2, y: r.top + (r.height * 0.66) };
+            }
+
+            function getTurretMuzzlePoint() {
+                const pivot = getTurretPivot();
+                const len = 56; // tuned for the CSS-scaled turret barrel
+                const rad = state.barrelAngleDeg * Math.PI / 180;
+                return {
+                    x: pivot.x + Math.cos(rad) * len,
+                    y: pivot.y + Math.sin(rad) * len
+                };
+            }
+
+            function setCrosshair(x, y) {
+                crosshair.style.left = `${snap(x)}px`;
+                crosshair.style.top = `${snap(y)}px`;
+            }
+
+            function rotateTurretToward(x, y) {
+                const p = getTurretPivot();
+                let angle = Math.atan2(y - p.y, x - p.x) * (180 / Math.PI);
+                angle = Math.round(angle / ANGLE_SNAP) * ANGLE_SNAP;
+                state.barrelAngleDeg = angle;
+                barrelWrap.style.transform = `rotate(${angle}deg)`;
+            }
+
+            function onPointerMove(e) {
+                if (state.panelOpen) return;
+                state.mouseX = e.clientX;
+                state.mouseY = e.clientY;
+                setCrosshair(state.mouseX, state.mouseY);
+                rotateTurretToward(state.mouseX, state.mouseY);
+            }
+
+            function getFolderCenter(folderEl) {
+                const r = folderEl.getBoundingClientRect();
+                return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }
+
+            function getTargetAtPoint(x, y) {
+                const stack = document.elementsFromPoint
+                    ? document.elementsFromPoint(x, y)
+                    : [document.elementFromPoint(x, y)];
+
+                if (!stack) return null;
+
+                for (const el of stack) {
+                    const astEl = el?.closest?.('.asteroid');
+                    if (astEl) {
+                        const ast = asteroidMap.get(astEl);
+                        if (ast && ast.alive) return { type: 'asteroid', asteroid: ast };
+                    }
+                }
+
+                for (const el of stack) {
+                    const folderEl = el?.closest?.('.folder');
+                    if (folderEl) return { type: 'folder', folder: folderEl };
+                }
+
+                return null;
+            }
+
+            function targetUnderCrosshair() {
+                return getTargetAtPoint(state.mouseX, state.mouseY);
+            }
+
+            function createBeam(from, to) {
+                const fx = snap(from.x);
+                const fy = snap(from.y);
+                const tx = snap(to.x);
+                const ty = snap(to.y);
+
+                const dx = tx - fx;
+                const dy = ty - fy;
+                const len = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+                const beam = document.createElement('div');
+                beam.className = 'laser-beam';
+                beam.style.left = `${fx}px`;
+                beam.style.top = `${fy}px`;
+                beam.style.width = `${Math.max(2, snap(len, 2))}px`;
+                beam.style.transform = `rotate(${Math.round(angle)}deg)`;
+                document.body.appendChild(beam);
+                setTimeout(() => beam.remove(), 180);
+            }
+
+            function createImpact(x, y) {
+                const impact = document.createElement('div');
+                impact.className = 'impact';
+                impact.style.left = `${snap(x)}px`;
+                impact.style.top = `${snap(y)}px`;
+                document.body.appendChild(impact);
+                setTimeout(() => impact.remove(), 220);
+            }
+
+            function createAsteroidExplosion(x, y) {
+                const ex = document.createElement('div');
+                ex.className = 'asteroid-explosion';
+                ex.style.left = `${snap(x)}px`;
+                ex.style.top = `${snap(y)}px`;
+                document.body.appendChild(ex);
+                setTimeout(() => ex.remove(), 260);
+            }
+
+            function makeBolt() {
+                const bolt = document.createElement('div');
+                bolt.className = 'laser-bolt';
+                document.body.appendChild(bolt);
+                return bolt;
+            }
+
+            function animateDirectBolt(from, to, onDone) {
+                const bolt = makeBolt();
+                const duration = Math.max(70, (Math.hypot(to.x - from.x, to.y - from.y) / CONFIG.directShotSpeedPxPerSec) * 1000);
+                const start = performance.now();
+
+                function frame(now) {
+                    const t = Math.min(1, (now - start) / duration);
+                    const eased = 1 - Math.pow(1 - t, 3);
+                    const x = from.x + (to.x - from.x) * eased;
+                    const y = from.y + (to.y - from.y) * eased;
+                    bolt.style.left = `${snap(x)}px`;
+                    bolt.style.top = `${snap(y)}px`;
+
+                    if (t < 1) requestAnimationFrame(frame);
+                    else {
+                        bolt.remove();
+                        onDone?.();
+                    }
+                }
+                requestAnimationFrame(frame);
+            }
+
+            // Miss shots only ricochet; does not open folders / hit asteroids while bouncing
+            function animateRicochetBolt(from, aimPoint) {
+                const bolt = makeBolt();
+
+                let x = from.x, y = from.y;
+                let dx = aimPoint.x - from.x;
+                let dy = aimPoint.y - from.y;
+                const mag = Math.hypot(dx, dy) || 1;
+                dx /= mag; dy /= mag;
+
+                let vx = dx * CONFIG.ricochetSpeedPxPerSec;
+                let vy = dy * CONFIG.ricochetSpeedPxPerSec;
+
+                let lastTime = performance.now();
+                const born = lastTime;
+                let bounces = 0;
+                let segmentStart = { x, y };
+                const margin = 6;
+
+                function finish() { bolt.remove(); }
+
+                function frame(now) {
+                    if (state.panelOpen) { finish(); return; }
+
+                    const dt = Math.min(0.032, (now - lastTime) / 1000);
+                    lastTime = now;
+
+                    x += vx * dt;
+                    y += vy * dt;
+
+                    let bounced = false, bouncedX = false, bouncedY = false;
+                    const minX = margin, minY = margin;
+                    const maxX = window.innerWidth - margin;
+                    const maxY = window.innerHeight - margin;
+
+                    if (x <= minX) { x = minX; vx *= -1; bounced = true; bouncedX = true; }
+                    else if (x >= maxX) { x = maxX; vx *= -1; bounced = true; bouncedX = true; }
+
+                    if (y <= minY) { y = minY; vy *= -1; bounced = true; bouncedY = true; }
+                    else if (y >= maxY) { y = maxY; vy *= -1; bounced = true; bouncedY = true; }
+
+                    bolt.style.left = `${snap(x)}px`;
+                    bolt.style.top = `${snap(y)}px`;
+
+                    if (bounced) {
+                        bounces++;
+                        createBeam(segmentStart, { x, y });
+                        createImpact(x, y);
+                        playRicochet();
+
+                        if (bouncedX) x += Math.sign(vx);
+                        if (bouncedY) y += Math.sign(vy);
+
+                        segmentStart = { x, y };
+                    }
+
+                    if (bounces >= CONFIG.ricochetMaxBounces || (now - born) >= CONFIG.ricochetLifetimeMs) {
+                        createBeam(segmentStart, { x, y });
+                        createImpact(x, y);
+                        finish();
+                        return;
+                    }
+
+                    requestAnimationFrame(frame);
+                }
+
+                requestAnimationFrame(frame);
+            }
+
+            /* ---------- Asteroids ---------- */
+
+            function placeAsteroidEl(ast) {
+                const qx = snap(ast.x);
+                const qy = snap(ast.y);
+                const qSize = Math.max(24, snap(ast.size, 2));
+                const qAngle = Math.round(ast.angle / 6) * 6;
+
+                ast.el.style.left = `${qx}px`;
+                ast.el.style.top = `${qy}px`;
+                ast.el.style.width = `${qSize}px`;
+                ast.el.style.height = `${qSize}px`;
+                ast.el.style.transform = `translate(-50%, -50%) rotate(${qAngle}deg)`;
+            }
+
+            function spawnAsteroid() {
+                const ast = {
+                    id: asteroidIdCounter++,
+                    el: document.createElement('div'),
+                    sprite: document.createElement('canvas'),
+                    x: 0, y: 0,
+                    vx: 0, vy: 0,
+                    size: 0,
+                    angle: rand(0, 360),
+                    rotSpeed: rand(-35, 35),
+                    alive: true
+                };
+
+                ast.el.className = 'asteroid';
+                ast.el.dataset.asteroidId = String(ast.id);
+
+                ast.sprite.className = 'asteroid-sprite';
+                ast.sprite.width = 16;
+                ast.sprite.height = 16;
+                drawAsteroidSprite(ast.sprite, ast.id * 1337 + (Math.random() * 99999) | 0);
+                ast.el.appendChild(ast.sprite);
+
+                const m = CONFIG.asteroids.margin;
+                const avoidBottomY = window.innerHeight - 120;
+                ast.size = rand(CONFIG.asteroids.minSize, CONFIG.asteroids.maxSize);
+
+                let tries = 0;
+                do {
+                    ast.x = rand(m + ast.size * 0.5, window.innerWidth - m - ast.size * 0.5);
+                    ast.y = rand(m + ast.size * 0.5, window.innerHeight - m - ast.size * 0.5);
+                    tries++;
+                } while (
+                    tries < 30 &&
+                    ast.y > avoidBottomY &&
+                    Math.abs(ast.x - window.innerWidth / 2) < 140
+                );
+
+                const speed = rand(CONFIG.asteroids.minSpeed, CONFIG.asteroids.maxSpeed);
+                const dir = rand(0, Math.PI * 2);
+                ast.vx = Math.cos(dir) * speed;
+                ast.vy = Math.sin(dir) * speed;
+
+                asteroidLayer.appendChild(ast.el);
+                asteroids.push(ast);
+                asteroidMap.set(ast.el, ast);
+                placeAsteroidEl(ast);
+            }
+
+            function removeAsteroid(ast) {
+                ast.alive = false;
+                asteroidMap.delete(ast.el);
+                ast.el.remove();
+                const idx = asteroids.indexOf(ast);
+                if (idx >= 0) asteroids.splice(idx, 1);
+            }
+
+            function destroyAsteroid(ast, hitX, hitY) {
+                if (!ast || !ast.alive) return;
+
+                ast.el.classList.add('hitflash');
+                createImpact(hitX, hitY);
+                createAsteroidExplosion(hitX, hitY);
+                playHit();
+
+                triggerWorldShake(Math.round(Math.min(10, 4 + ast.size / 12)), 180);
+
+                state.asteroidsDestroyed += 1;
+                state.score += 10;
+                updateScoreUI();
+
+                setTimeout(() => {
+                    removeAsteroid(ast);
+                    if (CONFIG.asteroids.enabled) {
+                        setTimeout(spawnAsteroid, CONFIG.asteroids.respawnDelayMs);
+                    }
+                }, 40);
+            }
+
+            function updateAsteroids(dt) {
+                const m = CONFIG.asteroids.margin;
+
+                for (const ast of asteroids) {
+                    if (!ast.alive) continue;
+
+                    ast.x += ast.vx * dt;
+                    ast.y += ast.vy * dt;
+                    ast.angle += ast.rotSpeed * dt;
+
+                    const half = ast.size * 0.5;
+                    const minX = m + half, minY = m + half;
+                    const maxX = window.innerWidth - m - half;
+                    const maxY = window.innerHeight - m - half;
+
+                    let bounced = false;
+                    if (ast.x <= minX) { ast.x = minX; ast.vx *= -1; bounced = true; }
+                    else if (ast.x >= maxX) { ast.x = maxX; ast.vx *= -1; bounced = true; }
+
+                    if (ast.y <= minY) { ast.y = minY; ast.vy *= -1; bounced = true; }
+                    else if (ast.y >= maxY) { ast.y = maxY; ast.vy *= -1; bounced = true; }
+
+                    if (bounced && Math.random() < 0.15) {
+                        ast.vx *= rand(0.95, 1.05);
+                        ast.vy *= rand(0.95, 1.05);
+                    }
+
+                    placeAsteroidEl(ast);
+                }
+            }
+
+            /* ---------- Folder UI ---------- */
+
+            function openFolder(folderId) {
+                const cfg = folderConfigs[folderId];
+                if (!cfg) return;
+
+                playOpenFolder();
+                state.panelOpen = true;
+                setMusicDuck(CONFIG.audio.folderOpenDuck);
+
+                body.classList.remove('combat-mode');
+                overlay.classList.add('open');
+                overlay.setAttribute('aria-hidden', 'false');
+                folderTitle.textContent = cfg.title;
+
+                folderContent.innerHTML = '';
+                folderNav.innerHTML = '';
+
+                const tpl = document.getElementById(cfg.template);
+                if (!tpl) return;
+                folderContent.appendChild(tpl.content.cloneNode(true));
+
+                const sections = [...folderContent.querySelectorAll('section[id]')];
+                const navTitle = document.createElement('h3');
+                navTitle.textContent = 'CONTENTS';
+                folderNav.appendChild(navTitle);
+
+                sections.forEach((sec, i) => {
+                    const heading = sec.querySelector('h1,h2,h3');
+                    const label = (heading?.textContent || `SECTION ${i + 1}`).trim();
+
+                    const btn = document.createElement('button');
+                    btn.className = 'nav-item' + (i === 0 ? ' active' : '');
+                    btn.textContent = label;
+                    btn.dataset.target = sec.id;
+
+                    btn.addEventListener('click', () => {
+                        [...folderNav.querySelectorAll('.nav-item')].forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+
+                    folderNav.appendChild(btn);
+                });
+
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (!entry.isIntersecting) return;
+                        const id = entry.target.id;
+                        [...folderNav.querySelectorAll('.nav-item')].forEach(btn => {
+                            btn.classList.toggle('active', btn.dataset.target === id);
+                        });
+                    });
+                }, { root: folderContent, threshold: 0.55 });
+
+                sections.forEach(sec => observer.observe(sec));
+                folderContent._observer = observer;
+            }
+
+            function closeFolder() {
+                if (!state.panelOpen) return;
+                state.panelOpen = false;
+                setMusicDuck(1);
+
+                overlay.classList.remove('open');
+                overlay.setAttribute('aria-hidden', 'true');
+                body.classList.add('combat-mode');
+
+                if (folderContent._observer) {
+                    folderContent._observer.disconnect();
+                    folderContent._observer = null;
+                }
+            }
+
+            /* ---------- Firing ---------- */
+
+            function fireShot(target = null) {
+                if (state.panelOpen || state.cooldown) return;
+
+                unlockAudioAndMaybeStartBg();
+
+                state.cooldown = true;
+                setTimeout(() => (state.cooldown = false), CONFIG.shootCooldownMs);
+
+                const from = getTurretMuzzlePoint();
+                playShoot();
+
+                if (target?.type === 'folder') {
+                    const folderEl = target.folder;
+                    const to = getFolderCenter(folderEl);
+                    createBeam(from, to);
+
+                    animateDirectBolt(from, to, () => {
+                        createImpact(to.x, to.y);
+                        playHit();
+                        folderEl.classList.add('hit');
+                        setTimeout(() => folderEl.classList.remove('hit'), 160);
+                        setTimeout(() => openFolder(folderEl.dataset.folderId), 70);
+                    });
+                    return;
+                }
+
+                if (target?.type === 'asteroid') {
+                    const ast = target.asteroid;
+                    if (!ast || !ast.alive) {
+                        animateRicochetBolt(from, { x: state.mouseX, y: state.mouseY });
+                        return;
+                    }
+
+                    const to = { x: ast.x, y: ast.y };
+                    createBeam(from, to);
+
+                    animateDirectBolt(from, to, () => {
+                        if (!ast.alive) return;
+                        destroyAsteroid(ast, to.x, to.y);
+                    });
+                    return;
+                }
+
+                animateRicochetBolt(from, { x: state.mouseX, y: state.mouseY });
+            }
+
+            /* ---------- Input ---------- */
+
+            musicSlider.addEventListener('input', () => {
+                state.musicVol = Number(musicSlider.value) / 100;
+                updateVolumeUI();
+                applyMusicVolume();
+            });
+
+            sfxSlider.addEventListener('input', () => {
+                state.sfxVol = Number(sfxSlider.value) / 100;
+                updateVolumeUI();
+            });
+
+            window.addEventListener('mousemove', onPointerMove, { passive: true });
+
+            window.addEventListener('click', (e) => {
+                unlockAudioAndMaybeStartBg();
+                if (state.panelOpen) return;
+                const target = getTargetAtPoint(e.clientX, e.clientY);
+                fireShot(target);
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closeFolder();
+                    return;
+                }
+
+                unlockAudioAndMaybeStartBg();
+                if (state.panelOpen) return;
+
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    fireShot(targetUnderCrosshair());
+                }
+            });
+
+            closeFolderBtn.addEventListener('click', closeFolder);
+            backToCombatBtn.addEventListener('click', closeFolder);
+
+            window.addEventListener('resize', () => {
+                if (!state.panelOpen) rotateTurretToward(state.mouseX, state.mouseY);
+            });
+
+            /* ---------- Init ---------- */
+
+            updateScoreUI();
+            updateVolumeUI();
+            setCrosshair(state.mouseX, state.mouseY);
+            rotateTurretToward(state.mouseX, state.mouseY);
+            applyMusicVolume();
+
+            if (CONFIG.asteroids.enabled) {
+                for (let i = 0; i < CONFIG.asteroids.count; i++) spawnAsteroid();
+            }
+
+            /* ---------- Main loop ---------- */
+
+            let lastFrame = performance.now();
+
+            function gameLoop(now) {
+                const dt = Math.min(0.033, (now - lastFrame) / 1000);
+                lastFrame = now;
+
+                if (Math.abs(state.musicDuckCurrent - state.musicDuckTarget) > 0.001) {
+                    const t = 1 - Math.exp(-CONFIG.audio.duckLerpSpeed * dt);
+                    state.musicDuckCurrent += (state.musicDuckTarget - state.musicDuckCurrent) * t;
+                    applyMusicVolume();
+                }
+
+                if (!state.panelOpen) {
+                    if (CONFIG.folderFloat) {
+                        const amp = CONFIG.folderFloatAmountPx;
+                        for (const f of folderBasePositions) {
+                            const x = snap(Math.sin(now * f.speed + f.i * 1.3) * amp, 2);
+                            const y = snap(Math.cos(now * (f.speed * 0.9) + f.i * 0.7) * amp, 2);
+                            f.el.style.left = `calc(${f.baseLeft}% + ${x}px)`;
+                            f.el.style.top = `calc(${f.baseTop}% + ${y}px)`;
+                        }
+                    }
+
+                    updateAsteroids(dt);
+                }
+
+                requestAnimationFrame(gameLoop);
+            }
+
+            requestAnimationFrame(gameLoop);
+        })();
+    </script>
+</body>
+</html>
